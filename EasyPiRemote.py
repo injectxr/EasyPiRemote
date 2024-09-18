@@ -1,4 +1,4 @@
-# EasyPiControl使い方
+# EasyPiRemote使い方
 
 # Step 1: 必要な外部ライブラリをインストール
 # 以下のコマンドを使用して、Paramikoをインストールします。
