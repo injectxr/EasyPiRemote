@@ -52,7 +52,7 @@ import os
 
 hostname = 'raspberrypi.local'  # Raspberry Piのホスト名またはIPアドレス
 username = 'pi'                 # Raspberry Piのユーザー名
-password = ''          # パスワード
+password = 'raspberry'          # パスワード
 
 def main():
     session = ssh_connect_and_interactive(hostname, username, password)
@@ -150,6 +150,22 @@ def run_remote_python(shell, remote_file_path):
                 print(output, end='')
     except KeyboardInterrupt:
         print("\n実行を終了しました。")
+        
+def download_file(session, remote_file_path, local_file_path):
+    try:
+        sftp = session.open_sftp()
+        try:
+            sftp.stat(remote_file_path) 
+            print(f"リモートファイル {remote_file_path} をダウンロード中...")
+        except FileNotFoundError:
+            print(f"エラー: リモートファイル {remote_file_path} が存在しません。")
+            sftp.close()
+            return
+        sftp.get(remote_file_path, local_file_path)
+        print(f"ファイルが {local_file_path} に保存されました。")
+        sftp.close()
+    except Exception as e:
+        print(f"ファイル転送エラー: {e}")
     
 if __name__ == "__main__":
     main()
