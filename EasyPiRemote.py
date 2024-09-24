@@ -49,6 +49,7 @@
 import paramiko
 import time
 import os
+import re
 
 hostname = 'raspberrypi.local'  # Raspberry Piのホスト名またはIPアドレス
 username = 'pi'                 # Raspberry Piのユーザー名
@@ -60,65 +61,75 @@ def main():
         client(session)
 
 def client(session):
-    shell = session.invoke_shell()
+    original_shell = session.invoke_shell() 
     time.sleep(1)
 
-    if shell.recv_ready():
-        shell.recv(1024).decode('utf-8')
-        print("接続成功")
+    if original_shell.recv_ready():
+        original_shell.recv(1024).decode('utf-8')
+        print("ezPi:接続成功")
+    
+    command = ""
+    current_directory = get_current_directory(original_shell)
+    prompt = f"{username}@raspberrypi:{current_directory}$ "
 
     while True:
-        command = input("> ")
+        command = input(f"{prompt}")
 
-        # シャットダウン
+        # exit コマンドでセッションを終了
         if command.lower() == 'exit':
-            print("接続を終了します...")
-            shell.send("sudo shutdown -h now" + '\n')
+            print("ezPi:接続を終了します...")
+            original_shell.send("sudo shutdown -h now" + '\n')
             time.sleep(100)
             break
 
-        # pi ~~~.py - ローカルディレクトリのファイル名を入力
+        # pi ~~~.py コマンドでコピーのシェルを作成しスクリプト実行
         if command.lower().startswith('pi '):
             file_name = command.split()[1]
             local_file_path = os.path.join(os.getcwd(), file_name)
 
-            current_directory = get_current_directory(shell)
+            current_directory = get_current_directory(original_shell)
             if current_directory is None:
-                print("カレントディレクトリの取得に失敗しました。")
+                print("ezPi:カレントディレクトリの取得に失敗しました。")
                 continue
 
             remote_file_path = current_directory + '/' + file_name
-            upload_file(session, local_file_path, remote_file_path)
-            run_remote_python(shell, remote_file_path)
+            if upload_file(session, local_file_path, remote_file_path):
+                copy_shell = session.invoke_shell() 
+                try:
+                    run_remote_python(copy_shell, remote_file_path)
+                finally:
+                    copy_shell.close()
             continue
-
-        # get ~~~.py リモートディレクトリのファイル名を入力
+        
+        # get ~~~.py コマンドでリモートファイルを取得
         if command.lower().startswith('get '):
             file_name = command.split()[1]
-            current_directory = get_current_directory(shell)
+            current_directory = get_current_directory(original_shell)
+            if current_directory is None:
+                print("ezPi:カレントディレクトリの取得に失敗しました。")
+                continue
+
             remote_file_path = current_directory + '/' + file_name
             local_file_path = os.path.join(os.getcwd(), file_name)
             download_file(session, remote_file_path, local_file_path)
-            print(f"{remote_file_path} を {local_file_path} に保存しました")
+            print(f"ezPi:{remote_file_path} を {local_file_path} に保存しました")
             continue
 
-        shell.send(command + '\n')
+        original_shell.send(command + '\n')
         time.sleep(1.5)
-        while shell.recv_ready():
-            output = shell.recv(1024).decode('utf-8')
-            print(output)
 
-def ssh_connect_and_interactive(hostname, username, password):
-    session = paramiko.SSHClient()
-    session.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-    try:
-        print(f"{hostname} に接続中...")
-        session.connect(hostname, username=username, password=password)
-        return session
-    except Exception as e:
-        print(f"接続エラー: {e}")
-        session.close()
-        return None
+        # `cd`コマンドの場合、ディレクトリ変更を検知し、プロンプトを更新
+        if command.startswith("cd "):
+            new_directory = get_current_directory(original_shell)
+            if new_directory:
+                prompt = f"{username}@raspberrypi:{new_directory}$ "  # 新しいディレクトリを反映
+                
+        while original_shell.recv_ready():
+            output = original_shell.recv(1024).decode('utf-8')
+            output = re.sub(r'pi@raspberrypi:.*~\$ ', '', output)
+            if output.strip():
+                print(output, end='')
+
 
 def get_current_directory(shell):
     shell.send('pwd\n')
@@ -126,46 +137,67 @@ def get_current_directory(shell):
     output = shell.recv(1024).decode('utf-8').splitlines()
     for line in output:
         if line.startswith('/'):
-            return line.strip()
+            return line.strip()  
     return None
+
+def run_remote_python(shell, remote_file_path):
+    shell.send(f'python3 {remote_file_path}\n')
+
+    try:
+        output = ""
+        while True:
+            if shell.recv_ready():
+                output = shell.recv(1024).decode('utf-8')
+                print(output, end='')
+            if "Traceback" in output or "Error" in output:
+                break 
+
+            if "実行を終了しました。" in output:
+                break
+
+    except KeyboardInterrupt:
+        print("\nezPi:実行を強制終了しました。")
+        shell.close()
+        return 0
+
+def ssh_connect_and_interactive(hostname, username, password):
+    session = paramiko.SSHClient()
+    session.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    try:
+        print(f"ezPi:{hostname} に接続中...")
+        session.connect(hostname, username=username, password=password)
+        return session
+    except Exception as e:
+        print(f"ezPi:接続エラー: {e}")
+        session.close()
+        return None
 
 def upload_file(session, local_file_path, remote_file_path):
     try:
         sftp = session.open_sftp()
         sftp.put(local_file_path, remote_file_path)
-        
-        print(f"ファイルがリモートにアップロードされました: {remote_file_path}")
         sftp.close()
+        return True
+    
     except Exception as e:
-        print(f"ファイルアップロードエラー: {e}")
+        print(f"ezPi:ファイルアップロードエラー: {e}")
+        return False
 
-def run_remote_python(shell, remote_file_path):
-    print(f"python3 {remote_file_path} を実行中...")
-    shell.send(f'python3 {remote_file_path}\n')
-
-    try:
-        while True:
-            if shell.recv_ready():
-                output = shell.recv(1024).decode('utf-8')
-                print(output, end='')
-    except KeyboardInterrupt:
-        print("\n実行を終了しました。")
-        
 def download_file(session, remote_file_path, local_file_path):
     try:
         sftp = session.open_sftp()
         try:
             sftp.stat(remote_file_path) 
-            print(f"リモートファイル {remote_file_path} をダウンロード中...")
+            print(f"ezPi:リモートファイル {remote_file_path} をダウンロード中...")
         except FileNotFoundError:
-            print(f"エラー: リモートファイル {remote_file_path} が存在しません。")
+            print(f"ezPi:リモートファイル {remote_file_path} が存在しません。")
             sftp.close()
             return
         sftp.get(remote_file_path, local_file_path)
-        print(f"ファイルが {local_file_path} に保存されました。")
+        print(f"ezPi:ファイルが {local_file_path} に保存されました。")
         sftp.close()
     except Exception as e:
-        print(f"ファイル転送エラー: {e}")
-    
+        print(f"ezPi:ファイル転送エラー: {e}")
+
 if __name__ == "__main__":
     main()
