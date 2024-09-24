@@ -1,6 +1,6 @@
 # EasyPiRemote
 
-**EasyPiRemote**は、Raspberry PiをSSH経由でリモート操作できるシンプルなPythonツールです。Pythonファイル一つで動作し、コマンドを使ってRaspberry Piへのファイル転送やPythonスクリプトの実行、リモートファイルのダウンロードが簡単に行えます。
+**EasyPiRemote**は、PCからRaspberry PiにSSH接続し、擬似的にスクリプトのローカル実行を再現しました。
 
 ## 機能
 - Pythonファイル一つで動作
