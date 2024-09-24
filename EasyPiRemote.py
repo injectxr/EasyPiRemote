@@ -1,51 +1,3 @@
-# EasyPiRemote使い方
-
-# Step 1: 必要な外部ライブラリをインストール
-# 以下のコマンドを使用して、Paramikoをインストールします。
-# ターミナルで次のコマンドを実行:
-# > pip install paramiko
-
-# Step 2: 接続情報を設定
-# hostname、username、passwordをスクリプト内で設定してください
-# これにより、Raspberry PiへのSSH接続が可能になります
-
-# Step 3: `setup.py`を実行
-# 以下のコマンドを使って、スクリプトを実行してください
-# > python setup.py
-
-# Step 4: 基本的な操作
-# ターミナルと同じ形式のコマンドを使用して、
-# ファイル移動や表示ができます（例: cd、ls など）
-
-# -----------------------------------------------------------------------------
-
-# ディレクトリの区別
-
-# ローカルディレクトリ: 
-# - Windows上のファイルやフォルダを指します。
-
-# リモートディレクトリ: 
-# - Raspberry Pi上のファイルやフォルダを指します。
-
-# -----------------------------------------------------------------------------
-
-# 実行方法
-
-# 1. プログラムを実行
-# ローカルディレクトリのファイルを指定して実行します。
-# setup.pyから見て、ファイル名を入力します。
-# 例: `> pi <ファイル名>.py`
-
-# プログラムの停止
-# ctrl + c
-
-# 2. ファイルのダウンロード
-# リモートディレクトリ（Raspberry Pi上）からファイルをダウンロードするには、
-# 現在のディレクトリの相対パスを指定して実行します。
-# 例1: `> cd program` → `get <ファイル名>.py`
-# 例2: `> get program/<ファイル名>.py`
-
-
 import paramiko
 import time
 import os
@@ -66,30 +18,28 @@ def client(session):
 
     if original_shell.recv_ready():
         original_shell.recv(1024).decode('utf-8')
-        print("ezPi:接続成功")
+        print("\033[92mezPi:接続成功\033[0m")  # 緑色の接続成功メッセージ
     
     command = ""
     current_directory = get_current_directory(original_shell)
     prompt = f"{username}@raspberrypi:{current_directory}$ "
 
     while True:
-        command = input(f"{prompt}")
+        command = input(f"\033[92m{prompt}\033[0m")
 
-        # exit コマンドでセッションを終了
         if command.lower() == 'exit':
-            print("ezPi:接続を終了します...")
+            print("\033[93mezPi:接続を終了します...\033[0m")  # 黄色の終了メッセージ
             original_shell.send("sudo shutdown -h now" + '\n')
             time.sleep(100)
             break
 
-        # pi ~~~.py コマンドでコピーのシェルを作成しスクリプト実行
         if command.lower().startswith('pi '):
             file_name = command.split()[1]
             local_file_path = os.path.join(os.getcwd(), file_name)
 
             current_directory = get_current_directory(original_shell)
             if current_directory is None:
-                print("ezPi:カレントディレクトリの取得に失敗しました。")
+                print("\033[91mezPi:カレントディレクトリの取得に失敗しました。\033[0m")  # 赤色のエラーメッセージ
                 continue
 
             remote_file_path = current_directory + '/' + file_name
@@ -100,33 +50,31 @@ def client(session):
                 finally:
                     copy_shell.close()
             continue
-        
-        # get ~~~.py コマンドでリモートファイルを取得
+
         if command.lower().startswith('get '):
             file_name = command.split()[1]
             current_directory = get_current_directory(original_shell)
             if current_directory is None:
-                print("ezPi:カレントディレクトリの取得に失敗しました。")
+                print("\033[91mezPi:カレントディレクトリの取得に失敗しました。\033[0m")
                 continue
 
             remote_file_path = current_directory + '/' + file_name
             local_file_path = os.path.join(os.getcwd(), file_name)
             download_file(session, remote_file_path, local_file_path)
-            print(f"ezPi:{remote_file_path} を {local_file_path} に保存しました")
+            print(f"\033[92mezPi:{remote_file_path} を {local_file_path} に保存しました\033[0m")  # 緑色の成功メッセージ
             continue
 
         original_shell.send(command + '\n')
         time.sleep(1.5)
 
-        # `cd`コマンドの場合、ディレクトリ変更を検知し、プロンプトを更新
         if command.startswith("cd "):
             new_directory = get_current_directory(original_shell)
             if new_directory:
                 prompt = f"{username}@raspberrypi:{new_directory}$ "  # 新しいディレクトリを反映
-                
+
         while original_shell.recv_ready():
             output = original_shell.recv(1024).decode('utf-8')
-            output = re.sub(r'pi@raspberrypi:.*~\$ ', '', output)
+            output = re.sub(rf'{username}@raspberrypi:[^$]*\$ ', '', output)
             if output.strip():
                 print(output, end='')
 
@@ -156,7 +104,7 @@ def run_remote_python(shell, remote_file_path):
                 break
 
     except KeyboardInterrupt:
-        print("\nezPi:実行を強制終了しました。")
+        print("\033[91m\nezPi:実行を強制終了しました。\033[0m")  # 赤色のエラーメッセージ
         shell.close()
         return 0
 
@@ -164,11 +112,11 @@ def ssh_connect_and_interactive(hostname, username, password):
     session = paramiko.SSHClient()
     session.set_missing_host_key_policy(paramiko.AutoAddPolicy())
     try:
-        print(f"ezPi:{hostname} に接続中...")
+        print(f"\033[92mezPi\033[0m:{hostname} に接続中...")  # 緑色の接続中メッセージ
         session.connect(hostname, username=username, password=password)
         return session
     except Exception as e:
-        print(f"ezPi:接続エラー: {e}")
+        print(f"\033[91mezPi:接続エラー: {e}\033[0m")  # 赤色のエラーメッセージ
         session.close()
         return None
 
@@ -180,7 +128,7 @@ def upload_file(session, local_file_path, remote_file_path):
         return True
     
     except Exception as e:
-        print(f"ezPi:ファイルアップロードエラー: {e}")
+        print(f"\033[91mezPi:ファイルアップロードエラー: {e}\033[0m")  # 赤色のエラーメッセージ
         return False
 
 def download_file(session, remote_file_path, local_file_path):
@@ -188,16 +136,16 @@ def download_file(session, remote_file_path, local_file_path):
         sftp = session.open_sftp()
         try:
             sftp.stat(remote_file_path) 
-            print(f"ezPi:リモートファイル {remote_file_path} をダウンロード中...")
+            print(f"\033[93mezPi:リモートファイル {remote_file_path} をダウンロード中...\033[0m")  # 黄色の進行中メッセージ
         except FileNotFoundError:
-            print(f"ezPi:リモートファイル {remote_file_path} が存在しません。")
+            print(f"\033[91mezPi:リモートファイル {remote_file_path} が存在しません。\033[0m")  # 赤色のエラーメッセージ
             sftp.close()
             return
         sftp.get(remote_file_path, local_file_path)
-        print(f"ezPi:ファイルが {local_file_path} に保存されました。")
+        print(f"\033[92mezPi:ファイルが {local_file_path} に保存されました。\033[0m")  # 緑色の成功メッセージ
         sftp.close()
     except Exception as e:
-        print(f"ezPi:ファイル転送エラー: {e}")
+        print(f"\033[91mezPi:ファイル転送エラー: {e}\033[0m")  # 赤色のエラーメッセージ
 
 if __name__ == "__main__":
     main()
